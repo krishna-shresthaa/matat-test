@@ -15,7 +15,7 @@ class OrderLineItem extends Model
     ];
 
     protected $casts = [
-        'data' => 'array',
+        'data' => 'json',
     ];
 
     public function order()

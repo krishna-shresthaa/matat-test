@@ -22,8 +22,8 @@ class Order extends Model
     ];
 
     protected $casts = [
-        'billing' => 'array',
-        'shipping' => 'array',
+        'billing'      => 'array',
+        'shipping'     => 'array',
         'date_created' => 'datetime',
     ];
 

@@ -2,59 +2,81 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ApiException;
+use App\Http\Requests\OrderListingRequest;
 use App\Models\Order;
-use App\Traits\SyncOrdersTrait;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
+use App\Resource\ApiResponse;
+use App\Services\WooCommerceService;
+use Illuminate\Http\JsonResponse;
 
 class OrderController extends Controller
 {
-    use SyncOrdersTrait;
+    /**
+     * The WooCommerce service instance.
+     *
+     * @var WooCommerceService
+     */
+    protected WooCommerceService $wooCommerceService;
 
-    public function index(Request $request)
+    /**
+     * Create a new OrderController instance.
+     *
+     * @param WooCommerceService $wooCommerceService
+     * @return void
+     */
+    public function __construct(WooCommerceService $wooCommerceService)
     {
-        $query = Order::query();
-
-        // Search
-        if ($request->has('search')) {
-            $query->whereAny(["number", "customer_note"], 'LIKE', '%'.$request->input('search').'%');
-        }
-
-        // Filter
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
-        }
-
-        // Sort
-        if ($request->has('sort_by')) {
-            $query->orderBy($request->input('sort_by'), $request->input('sort_order', 'asc'));
-        }
-
-        // Pagination
-        $perPage = $request->input('per_page', 15);
-        $orders  = $query->paginate($perPage);
-
-        return response()->json($orders);
+        $this->wooCommerceService = $wooCommerceService;
     }
 
-    public function sync(Request $request)
+    /**
+     * Get a list of orders.
+     *
+     * @param OrderListingRequest $request
+     * @return JsonResponse
+     */
+    public function index(OrderListingRequest $request)
     {
-        // Fetch new and updated orders from WooCommerce API
-        $url = config('woocommerce.api_url').'/orders/batch';
+        try {
+            $orders = Order::with('lineItems')
+                ->when($request->has('search'), function ($query) use ($request) {
+                    $search = $request->input('search');
+                    $query->where('number', 'like', "%{$search}%")
+                        ->orWhere('order_key', 'like', "%{$search}%")
+                        ->orWhere('status', 'like', "%{$search}%");
+                })
+                ->when($request->has('status'), function ($query) use ($request) {
+                    $query->where('status', $request->input('status'));
+                })
+                ->when($request->has('sort_by'), function ($query) use ($request) {
+                    $sortBy        = $request->input('sort_by');
+                    $sortDirection = $request->input('sort_direction', 'asc');
+                    $query->orderBy($sortBy, $sortDirection);
+                }, function ($query) {
+                    $query->orderBy('date_created', 'desc');
+                })
+                ->paginate($request->input('per_page', 15));
 
-        $response = Http::withBasicAuth(
-            config('woocommerce.api_key'),
-            config('woocommerce.api_secret')
-        )->get($url);
-
-        if ($response->successful()) {
-            foreach ($response->json() as $orderData) {
-                $this->syncOrder($orderData);
-            }
-        } else {
-            return response()->json(['error' => 'Failed to fetch orders from WooCommerce API.'], 500);
+            return response()->json($orders);
+        } catch (\Exception $e) {
+//            throw new ApiException($e->getMessage(), [], 500);
+            throw new ApiException("Internal Server Error", [],  500);
         }
+    }
 
-        return response()->json(['message' => 'Orders synced successfully.']);
+    /**
+     * Sync new and updated orders.
+     *
+     * @return JsonResponse
+     */
+    public function sync(): JsonResponse
+    {
+        try {
+            $totalOrders = $this->wooCommerceService->fetchAndSyncOrders();
+
+            return ApiResponse::make(null, "Synced {$totalOrders} orders from WooCommerce API.");
+        } catch (\Exception $e) {
+            throw new ApiException($e->getMessage(), [], 500);
+        }
     }
 }

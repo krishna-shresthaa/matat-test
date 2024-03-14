@@ -15,7 +15,6 @@ class Kernel extends ConsoleKernel
         // $schedule->command('inspire')->hourly();
         $schedule->command('orders:sync')->dailyAt('12:00');
         $schedule->command('orders:delete-old')->weekly();
-        $schedule->command('orders:retry-failed-syncs')->hourly();
     }
 
     /**

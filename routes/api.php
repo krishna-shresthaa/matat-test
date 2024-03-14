@@ -19,5 +19,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/orders', [OrderController::class, 'index']);
-Route::post('/orders/sync', [OrderController::class, 'sync']);
+//Route::middleware('auth:sanctum')->group(function () {
+    Route::get('orders', [OrderController::class, 'index']);
+    Route::post('orders/sync', [OrderController::class, 'sync']);
+//});

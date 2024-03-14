@@ -2,9 +2,9 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Command;
 use App\Models\Order;
 use Carbon\Carbon;
+use Illuminate\Console\Command;
 
 class DeleteOldOrdersCommand extends Command
 {
@@ -13,11 +13,17 @@ class DeleteOldOrdersCommand extends Command
     public function handle()
     {
         $threshold = Carbon::now()->subMonths(3);
-        $orders = Order::where('updated_at', '<', $threshold)->get();
+        //Delete all the orders which has not been updated in last 3 months along with orderItems
+        Order::query()
+            ->where('updated_at', '<', $threshold)
+            ->with('lineItems')
+            ->chunk(100, function ($orders) {
+                foreach ($orders as $order) {
+                    $order->lineItems()->delete();
+                    $order->delete();
+                }
+            });
 
-        foreach ($orders as $order) {
-            $order->delete();
-        }
 
         $this->info('Old orders deleted successfully.');
     }
